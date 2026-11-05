@@ -55,6 +55,11 @@ export const MEDIA_SERVER_FEATURES: Record<
     //   "push an explicit ordered list of item IDs" contract isn't satisfiable.
     // - TRUSTWORTHY_EMPTY_COLLECTION: same .NET BoxSet sync delay as Jellyfin.
   ]),
+  // Features are enabled as the Silo adapter implements them. Silo's native
+  // API is versioned (/api/v2) and announces optional features through
+  // capability endpoints, so each flag here should match a capability the
+  // adapter checks rather than an assumption about the server version.
+  [MediaServerType.SILO]: new Set([]),
 }
 
 /**
