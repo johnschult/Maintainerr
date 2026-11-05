@@ -1952,19 +1952,26 @@ export class RuleConstants {
     // Jellyfin property list verbatim (same IDs and names) so rule migration
     // between Jellyfin and Emby is a no-op on the property side. The Emby
     // getter implements the same property names against Emby's HTTP endpoints.
+    // Silo reuses the same list for the same reason; properties Silo has no
+    // data for resolve to undefined in its getter rather than a fake value.
     const jellyfinApp = this.applications.find(
       (a) => a.id === Application.JELLYFIN,
     );
-    if (
-      jellyfinApp &&
-      !this.applications.some((a) => a.id === Application.EMBY)
-    ) {
-      this.applications.push({
-        id: Application.EMBY,
-        name: 'Emby',
-        mediaType: MediaType.BOTH,
-        props: jellyfinApp.props,
-      });
+    if (!jellyfinApp) {
+      return;
+    }
+    for (const [id, name] of [
+      [Application.EMBY, 'Emby'],
+      [Application.SILO, 'Silo'],
+    ] as const) {
+      if (!this.applications.some((a) => a.id === id)) {
+        this.applications.push({
+          id,
+          name,
+          mediaType: MediaType.BOTH,
+          props: jellyfinApp.props,
+        });
+      }
     }
   }
 }
