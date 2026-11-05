@@ -17,6 +17,8 @@ type AvailableCacheIds =
   | 'jellyfin'
   | 'jellyfinwatchhistory'
   | 'emby'
+  | 'silo'
+  | 'silolibrary'
   | 'sportarrmetadata';
 
 type CacheType = AvailableCacheIds | 'radarr' | 'sonarr' | 'sportarr';
@@ -227,6 +229,19 @@ class CacheManager {
       },
     ),
     emby: new Cache('emby', 'Emby API', 'emby'),
+    silo: new Cache('silo', 'Silo API', 'silo'),
+    // Whole-library listings that SiloAdapterService pages and sorts in
+    // memory, since Silo's listing is cursor based with no sort or total. One
+    // value per library and kind, read once per page, so held by reference
+    // rather than cloned on every get.
+    silolibrary: new Cache(
+      'silolibrary',
+      'Silo library listings',
+      'silolibrary',
+      {
+        useClones: false,
+      },
+    ),
     // Artwork and descriptions for Sportarr leagues. Long-lived like the tmdb
     // and tvdb caches: a league's poster changes rarely and every card asks
     // for it. The Sportarr card on the metadata settings page clears it.
