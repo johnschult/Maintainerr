@@ -23,10 +23,14 @@ import {
   isAxiosError,
 } from 'axios';
 import { chunk } from 'lodash';
-import { formatConnectionFailureMessage } from '../../../../utils/connection-error';
+import {
+  formatConnectionFailureMessage,
+  logConnectionTestError,
+} from '../../../../utils/connection-error';
 import { MaintainerrLogger } from '../../../logging/logs.service';
 import { SettingsDataService } from '../../../settings/settings-data.service';
 import cacheManager, { type Cache } from '../../lib/cache';
+import { assertApiKey, connectionTestConfig } from '../../lib/connectionTest';
 import { SiloApi } from '../../silo-api/silo-api.helper';
 import { resolveContextActionIds } from '../context-action.util';
 import { supportsFeature } from '../media-server.constants';
@@ -571,6 +575,49 @@ export class SiloAdapterService implements IMediaServerService {
   }
 
   // ============================================================================
+  // Connection testing (used by settings before save)
+  // ============================================================================
+
+  /**
+   * One deadline covers the public version read and the protected account
+   * and profile reads, so a key that cannot act as admin fails here rather
+   * than after it is saved.
+   */
+  async testConnection(
+    url: string,
+    apiKey: string,
+    timeoutMs?: number,
+  ): Promise<{
+    success: boolean;
+    serverName?: string;
+    version?: string;
+    error?: string;
+  }> {
+    try {
+      assertApiKey(apiKey);
+      const probe = new SiloApi({ url, apiKey }).axios;
+      const config = connectionTestConfig(timeoutMs);
+      const [info] = await Promise.all([
+        probe.get<SiloSystemInfo>('/system/info', config),
+        this.resolvePrimaryProfileId(probe, config),
+      ]);
+      return {
+        success: true,
+        // Silo exposes no server display name; the host is what users know
+        // the server by.
+        serverName: new URL(url).host,
+        version: info.data.server_version,
+      };
+    } catch (error) {
+      logConnectionTestError(this.logger, 'Silo', error);
+      return {
+        success: false,
+        error: formatConnectionFailureMessage(error, 'Connection failed'),
+      };
+    }
+  }
+
+  // ============================================================================
   // Not implemented yet. These throw rather than answer empty: an empty watch
   // history reads as "never watched", an empty session list as "nothing is
   // playing" and an empty collection as "no members", all of which can lead
@@ -706,6 +753,9 @@ export class SiloAdapterService implements IMediaServerService {
       '/account/me',
       config,
     );
+    if (account.role !== 'admin') {
+      throw new Error('The Silo API key must belong to an admin account');
+    }
     const { data } = await client.get<SiloCollection<SiloAccountProfile>>(
       `/admin/users/${encodeURIComponent(account.id)}/profiles`,
       config,

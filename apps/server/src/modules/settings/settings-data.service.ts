@@ -232,6 +232,15 @@ export class SettingsDataService implements SettingDto {
             { id: this.id },
             { media_server_type: MediaServerType.EMBY },
           );
+        } else if (this.silo_api_key) {
+          this.logger.log(
+            'Detected existing Silo configuration without media_server_type set. Setting to silo.',
+          );
+          this.media_server_type = MediaServerType.SILO;
+          await this.settingsRepo.update(
+            { id: this.id },
+            { media_server_type: MediaServerType.SILO },
+          );
         } else if (this.plex_auth_token) {
           this.logger.log(
             'Detected existing Plex configuration without media_server_type set. Setting to plex.',
@@ -427,6 +436,10 @@ export class SettingsDataService implements SettingDto {
       } else if (this.media_server_type === MediaServerType.EMBY) {
         // Emby requires URL and API key (user ID is optional, can be auto-detected later)
         if (this.emby_url && this.emby_api_key) {
+          return true;
+        }
+      } else if (this.media_server_type === MediaServerType.SILO) {
+        if (this.silo_url && this.silo_api_key) {
           return true;
         }
       } else if (this.media_server_type === MediaServerType.PLEX) {

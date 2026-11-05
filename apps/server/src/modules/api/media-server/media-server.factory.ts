@@ -8,6 +8,7 @@ import { JellyfinAdapterService } from './jellyfin/jellyfin-adapter.service';
 import { MediaServerSwitchState } from './media-server-switch-state.service';
 import { IMediaServerService } from './media-server.interface';
 import { PlexAdapterService } from './plex/plex-adapter.service';
+import { SiloAdapterService } from './silo/silo-adapter.service';
 
 /**
  * Type guard to check if settings response is a Settings object
@@ -33,6 +34,7 @@ export class MediaServerFactory {
     private readonly plexAdapter: PlexAdapterService,
     private readonly jellyfinAdapter: JellyfinAdapterService,
     private readonly embyAdapter: EmbyAdapterService,
+    private readonly siloAdapter: SiloAdapterService,
     private readonly logger: MaintainerrLogger,
   ) {
     this.logger.setContext(MediaServerFactory.name);
@@ -110,6 +112,8 @@ export class MediaServerFactory {
         );
       case MediaServerType.EMBY:
         return Boolean(settings.emby_url && settings.emby_api_key);
+      case MediaServerType.SILO:
+        return Boolean(settings.silo_url && settings.silo_api_key);
       default:
         return false;
     }
@@ -132,6 +136,9 @@ export class MediaServerFactory {
 
       case MediaServerType.EMBY:
         return await this.ensureAdapterReady(serverType, this.embyAdapter);
+
+      case MediaServerType.SILO:
+        return await this.ensureAdapterReady(serverType, this.siloAdapter);
 
       default:
         throw new Error(`Unsupported media server type: ${serverType}`);
@@ -159,10 +166,12 @@ export class MediaServerFactory {
       settings.plex_auth_token,
     );
     const embyConfigured = Boolean(settings.emby_url && settings.emby_api_key);
+    const siloConfigured = Boolean(settings.silo_url && settings.silo_api_key);
     const inferredType = this.resolveServerType(
       plexConfigured,
       jellyfinConfigured,
       embyConfigured,
+      siloConfigured,
     );
 
     if (!configuredType) {
@@ -194,6 +203,9 @@ export class MediaServerFactory {
         break;
       case MediaServerType.EMBY:
         this.embyAdapter.uninitialize();
+        break;
+      case MediaServerType.SILO:
+        this.siloAdapter.uninitialize();
         break;
       default:
         throw new Error(`Unsupported media server type: ${serverType}`);
@@ -236,6 +248,22 @@ export class MediaServerFactory {
   }
 
   /**
+   * Test a Silo connection with the given credentials (admin API key).
+   */
+  async testSiloConnection(
+    url: string,
+    apiKey: string,
+    timeoutMs?: number,
+  ): Promise<{
+    success: boolean;
+    serverName?: string;
+    version?: string;
+    error?: string;
+  }> {
+    return this.siloAdapter.testConnection(url, apiKey, timeoutMs);
+  }
+
+  /**
    * Authenticate against an Emby server with admin credentials, mirroring
    * the Plex-flavoured login flow. Returns the resulting access token plus
    * library/user lists for the post-login confirmation step.
@@ -252,21 +280,17 @@ export class MediaServerFactory {
     plexConfigured: boolean,
     jellyfinConfigured: boolean,
     embyConfigured: boolean,
+    siloConfigured: boolean,
   ): MediaServerType | null {
-    if (jellyfinConfigured && !plexConfigured && !embyConfigured) {
-      return MediaServerType.JELLYFIN;
-    }
-
-    if (plexConfigured && !jellyfinConfigured && !embyConfigured) {
-      return MediaServerType.PLEX;
-    }
-
-    if (embyConfigured && !plexConfigured && !jellyfinConfigured) {
-      return MediaServerType.EMBY;
-    }
+    const configured = [
+      jellyfinConfigured && MediaServerType.JELLYFIN,
+      plexConfigured && MediaServerType.PLEX,
+      embyConfigured && MediaServerType.EMBY,
+      siloConfigured && MediaServerType.SILO,
+    ].filter((type): type is MediaServerType => Boolean(type));
 
     // Multiple configured or none configured - can't infer
-    return null;
+    return configured.length === 1 ? configured[0] : null;
   }
 
   /**
